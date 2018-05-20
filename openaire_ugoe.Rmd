@@ -1,0 +1,89 @@
+---
+title: "OpenAIRE Institutional Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(scales)
+library(plotly)
+library(shiny)
+# data
+# 1. get ugoe org data
+h2020_org <- readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
+                               locale = locale(decimal_mark = ",")) %>%
+  mutate_if(is.integer, as.character) %>%
+  filter(id == "999845640")
+# 2. get project info
+h2020_projects <- readr::read_delim("data/cordis-h2020projects.csv", delim = ";",
+                                    locale = locale(decimal_mark = ",")) %>%
+  mutate_if(is.integer, as.character) %>%
+  inner_join(h2020_org, by = c("id" = "projectID")) %>%
+  mutate(start_year = lubridate::year(startDate)) %>%
+  separate(fundingScheme, "funding_scheme") -> ugoe_all
+```
+
+Overview
+=================================================================
+
+Row
+--------------------------------------------------------
+
+### Signed H2020 contracts
+
+```{r}
+n_contracts <- nrow(ugoe_all)
+valueBox(n_contracts, caption = "Signed H2020 contracts", icon = "fa-check")
+```
+
+### Active H2020 contracts
+
+```{r}
+valueBox(nrow(filter(ugoe_all, endOfParticipation == "false")), icon = "fa-check")
+```
+
+### Total EU contribution
+
+```{r}
+valueBox(format(sum(ugoe_all$ecContribution, na.rm = TRUE), big.mark = "."), icon = "fa-euro")
+```
+
+Row
+--------------------------------------------------------
+
+### Signed H2020 contracts
+  
+```{r}
+ugoe_all %>%
+  group_by(funding_scheme, start_year, role) %>%
+  summarize(n = n(),
+            n_euro = sum(ecContribution)) %>%
+  ggplot(aes(start_year, n, fill = role)) + 
+  geom_bar(stat = "identity") +
+  xlab("Year") +
+  ylab("Signed Grants") +
+  viridis::scale_fill_viridis("Role", discrete = TRUE) +
+  theme_minimal() -> p
+plotly::ggplotly(p)
+```
+
+### EC contribution by funding scheme
+
+```{r}
+ugoe_all %>%
+  group_by(funding_scheme) %>%
+  summarise(n = sum(ecContribution, na.rm = TRUE)) %>%
+  arrange(desc(n)) %>%
+  ggplot(aes(reorder(funding_scheme, n), n)) + 
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  xlab("Funding scheme") +
+  ylab("EC Contribution (in Euro)") +
+  theme_minimal() -> p
+ggplotly(p)
+```
