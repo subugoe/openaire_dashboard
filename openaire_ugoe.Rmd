@@ -84,6 +84,64 @@ ugoe_all %>%
   coord_flip() +
   xlab("Funding scheme") +
   ylab("EC Contribution (in Euro)") +
+  scale_y_continuous(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
   theme_minimal() -> p
 ggplotly(p)
+```
+
+Collaboration
+--------------------------------------------------------
+
+```{r}
+# extract countries and collaborators
+h2020_orgs <- readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
+                               locale = locale(decimal_mark = ",")) %>%
+  mutate_if(is.integer, as.character) %>%
+  filter(projectID %in% ugoe_all$id)
+```
+
+### Total number of collaborating institutions
+
+```{r}
+valueBox(length(unique(h2020_orgs$id)), icon = "fa-university")
+```
+
+Row
+--------------------------------------------------------
+
+### Map
+
+```{r}
+library(leaflet)
+library(geojsonio)
+library(countrycode)
+h2020_orgs %>% 
+  count(country) %>%
+  mutate(name = countrycode::countrycode(country, "eurostat", "country.name")) -> countries
+library(leaflet)
+library(geojsonio)
+mypal <- colorQuantile(palette = "Blues", domain = countries$n, n = 5, reverse = FALSE)
+eu <- geojsonio::geojson_read("eu.geo.json", what = "sp")
+leaflet(eu) %>% 
+  #addProviderTiles("OpenStreetMap.Mapnik") %>%
+  setView(lat = 50, lng = 10, zoom = 4) %>%
+  addPolygons(fillColor = ~mypal(countries$n), 
+  weight = 2,
+  opacity = 1,
+  color = "white",
+  dashArray = "3",
+  fillOpacity = 0.7,
+  highlight = highlightOptions(
+    weight = 5,
+    color = "#666",
+    dashArray = "",
+    fillOpacity = 0.7,
+    bringToFront = TRUE))
+```
+
+### Table
+
+```{r}
+library(DT)
+DT::datatable(countries)
 ```
