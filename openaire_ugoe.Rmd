@@ -13,6 +13,7 @@ library(tidyverse)
 library(scales)
 library(plotly)
 library(shiny)
+library(DT)
 # data
 # 1. get ugoe org data
 h2020_org <- readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
@@ -124,9 +125,9 @@ renderPlotly({
     ylab("EC Contribution (in Euro)") +
     scale_y_continuous(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
     scale_fill_manual(values = c("#56B4E9", "grey50")) +
-    theme_minimal() +
-    theme(legend.position='none') -> p
-ggplotly(p)
+    theme_minimal() -> p
+p <- ggplotly(p)
+layout(p, showlegend = FALSE)
 })
 ```
 
