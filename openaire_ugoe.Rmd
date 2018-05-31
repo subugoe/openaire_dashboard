@@ -28,83 +28,153 @@ h2020_projects <- readr::read_delim("data/cordis-h2020projects.csv", delim = ";"
   separate(fundingScheme, "funding_scheme") -> ugoe_all
 ```
 
+Sidebar {.sidebar}
+=====================================
+
+### Filter
+
+```{r}
+# shiny inputs defined here
+shiny::selectizeInput(
+  "x",
+  label = NULL,
+  choices = c("EC Funding Schemes", ugoe_all$funding_scheme),
+  selected = "EC Funding Schemes"
+)
+
+ugoe <- reactive({
+  if (input$x == "EC Funding Schemes") {
+    tt <- ugoe_all
+  } else {
+    tt <- filter(ugoe_all, funding_scheme %in% input$x)
+  }
+  tt}
+  )
+```
+
+### About
+
+
 Overview
 =================================================================
 
 Row
 --------------------------------------------------------
 
-### Signed H2020 contracts
+### Signed H2020 contracts Column
+
 
 ```{r}
-n_contracts <- nrow(ugoe_all)
+renderValueBox({
+n_contracts <- nrow(ugoe())
 valueBox(n_contracts, caption = "Signed H2020 contracts", icon = "fa-check")
+})
 ```
 
 ### Active H2020 contracts
 
 ```{r}
-valueBox(nrow(filter(ugoe_all, endOfParticipation == "false")), icon = "fa-check")
+renderValueBox({
+valueBox(nrow(filter(ugoe(), endOfParticipation == "false")), icon = "fa-check")
+})
 ```
 
 ### Total EU contribution
 
 ```{r}
-valueBox(format(sum(ugoe_all$ecContribution, na.rm = TRUE), big.mark = "."), icon = "fa-euro")
+renderValueBox({
+valueBox(format(sum(ugoe()$ecContribution, na.rm = TRUE), big.mark = "."), icon = "fa-euro")
+})
+```
+
+Row {data-height=400}
+--------------------------------------------------------
+
+### Signed H2020 contracts 
+
+  
+```{r}
+renderPlotly({
+  ggplot(ugoe(), aes(start_year, ..count.., fill = role)) +
+    geom_bar() +
+    xlab("Year") +
+    ylab("Signed Grants") +
+    viridis::scale_fill_viridis("Role", discrete = TRUE) +
+    scale_y_continuous(breaks= seq(1, 25, by = 2)) +
+    theme_minimal() -> p
+  plotly::ggplotly(p)
+})
+
+```
+
+
+### EC contribution by funding scheme 
+
+```{r}
+renderPlotly({
+  ugoe_all %>%
+    mutate(fill_col = ifelse(funding_scheme %in% ugoe()$funding_scheme, "#56B4E9", "grey50")) %>%
+    group_by(funding_scheme, fill_col) %>%
+    summarise(n = sum(ecContribution, na.rm = TRUE)) %>%
+    arrange(desc(n)) %>%
+    ggplot(aes(reorder(funding_scheme, n), n, fill = fill_col)) + 
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    xlab("Funding scheme") +
+    ylab("EC Contribution (in Euro)") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+    scale_fill_manual(values = c("#56B4E9", "grey50")) +
+    theme_minimal() +
+    theme(legend.position='none') -> p
+ggplotly(p)
+})
 ```
 
 Row
 --------------------------------------------------------
 
-### Signed H2020 contracts
-  
-```{r}
-ugoe_all %>%
-  group_by(funding_scheme, start_year, role) %>%
-  summarize(n = n(),
-            n_euro = sum(ecContribution)) %>%
-  ggplot(aes(start_year, n, fill = role)) + 
-  geom_bar(stat = "identity") +
-  xlab("Year") +
-  ylab("Signed Grants") +
-  viridis::scale_fill_viridis("Role", discrete = TRUE) +
-  theme_minimal() -> p
-plotly::ggplotly(p)
-```
-
-### EC contribution by funding scheme
+### Recently started projects
 
 ```{r}
-ugoe_all %>%
-  group_by(funding_scheme) %>%
-  summarise(n = sum(ecContribution, na.rm = TRUE)) %>%
-  arrange(desc(n)) %>%
-  ggplot(aes(reorder(funding_scheme, n), n)) + 
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  xlab("Funding scheme") +
-  ylab("EC Contribution (in Euro)") +
-  scale_y_continuous(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
-  theme_minimal() -> p
-ggplotly(p)
+renderDT({
+  ugoe() %>%
+    select(2:6, 8:10, role, ecContribution) %>%
+    arrange(desc(startDate))
+}, options = list(pageLength = 5, autoWidth = TRUE), rownames= FALSE)
 ```
+
+Collaboration {data-orientation=rows}
+=====================================
 
 Collaboration
 --------------------------------------------------------
 
 ```{r}
 # extract countries and collaborators
-h2020_orgs <- readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
+h2020_orgs <- reactive({readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
                                locale = locale(decimal_mark = ",")) %>%
   mutate_if(is.integer, as.character) %>%
-  filter(projectID %in% ugoe_all$id)
+  filter(projectID %in% ugoe()$id)
+})
 ```
 
 ### Total number of collaborating institutions
 
 ```{r}
-valueBox(length(unique(h2020_orgs$id)), icon = "fa-university")
+renderValueBox({
+valueBox(length(unique(h2020_orgs()$id)), icon = "fa-university")
+})
 ```
+
+
+### Countries
+
+```{r}
+renderValueBox({
+valueBox(length(unique(h2020_orgs()$country)), icon = "fa-university")
+})
+```
+
 
 Row
 --------------------------------------------------------
@@ -115,17 +185,24 @@ Row
 library(leaflet)
 library(geojsonio)
 library(countrycode)
-h2020_orgs %>% 
+
+renderLeaflet({
+  h2020_orgs() %>% 
   count(country) %>%
   mutate(name = countrycode::countrycode(country, "eurostat", "country.name")) -> countries
-library(leaflet)
-library(geojsonio)
-mypal <- colorQuantile(palette = "Blues", domain = countries$n, n = 5, reverse = FALSE)
+
+mypal <- colorBin("YlOrRd", domain = countries$n, bins = c(1, 2, 5, 8, 10, 20, 40, Inf))
 eu <- geojsonio::geojson_read("eu.geo.json", what = "sp")
+eu@data <- left_join(eu@data, countries, by = c("name" = "name"))
+labels <- sprintf(
+  "<strong>%s</strong><br/>%g national collaborations",
+  eu@data$formal_en, eu@data$n
+) %>% lapply(htmltools::HTML)
+
 leaflet(eu) %>% 
   #addProviderTiles("OpenStreetMap.Mapnik") %>%
   setView(lat = 50, lng = 10, zoom = 4) %>%
-  addPolygons(fillColor = ~mypal(countries$n), 
+  addPolygons(fillColor = ~mypal(n), 
   weight = 2,
   opacity = 1,
   color = "white",
@@ -136,12 +213,23 @@ leaflet(eu) %>%
     color = "#666",
     dashArray = "",
     fillOpacity = 0.7,
-    bringToFront = TRUE))
+    bringToFront = TRUE),
+  label = labels) %>%
+  addLegend(pal = mypal, values = ~n, opacity = 0.7, title = NULL,
+    position = "bottomright")
+})
 ```
 
+Row
+----------------------------------------------
 ### Table
 
 ```{r}
 library(DT)
-DT::datatable(countries)
+renderDT({
+  h2020_orgs() %>% 
+  count(name, country, sort = TRUE) %>%
+  mutate(country = countrycode::countrycode(country, "eurostat", "country.name")) %>%
+  slice(-1)
+})
 ```
