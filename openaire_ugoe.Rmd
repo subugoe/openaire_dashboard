@@ -14,6 +14,7 @@ library(scales)
 library(plotly)
 library(shiny)
 library(DT)
+library(jsonlite)
 # data
 # 1. get ugoe org data
 h2020_org <- readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
@@ -27,6 +28,8 @@ h2020_projects <- readr::read_delim("data/cordis-h2020projects.csv", delim = ";"
   inner_join(h2020_org, by = c("id" = "projectID")) %>%
   mutate(start_year = lubridate::year(startDate)) %>%
   separate(fundingScheme, "funding_scheme") -> ugoe_all
+ugoe_pubs_df <- jsonlite::stream_in(file("data/pubs_ugoe.json")) %>% 
+  inner_join(h2020_projects, by = c("openaire_project_id" = "id"))
 ```
 
 Sidebar {.sidebar}
@@ -51,6 +54,15 @@ ugoe <- reactive({
   }
   tt}
   )
+
+ugoe_pubs <- reactive({
+  if (input$x == "EC Funding Schemes") {
+    tt <- ugoe_pubs_df
+  } else {
+    tt <- filter(ugoe_pubs_df, openaire_project_id %in% ugoe()$id)
+  }
+  tt}
+)
 ```
 
 ### About
@@ -193,7 +205,7 @@ renderLeaflet({
   mutate(name = countrycode::countrycode(country, "eurostat", "country.name")) -> countries
 
 mypal <- colorBin("YlOrRd", domain = countries$n, bins = c(1, 2, 5, 8, 10, 20, 40, Inf))
-eu <- geojsonio::geojson_read("eu.geo.json", what = "sp")
+eu <- geojsonio::geojson_read("data/eu.geo.json", what = "sp")
 eu@data <- left_join(eu@data, countries, by = c("name" = "name"))
 labels <- sprintf(
   "<strong>%s</strong><br/>%g national collaborations",
@@ -232,5 +244,133 @@ renderDT({
   count(name, country, sort = TRUE) %>%
   mutate(country = countrycode::countrycode(country, "eurostat", "country.name")) %>%
   slice(-1)
+})
+```
+
+Publication {data-orientation=rows}
+=====================================
+
+Row 
+--------------------------------------------------------
+
+### Total number of publications
+```{r}
+renderValueBox({
+valueBox(length(unique(ugoe_pubs()$openaire_id)), icon = "fa-file-alt")
+})
+```
+
+
+### Open Access Share (in percent)
+
+```{r}
+renderValueBox({
+  oa_pubs <- ugoe_pubs() %>% 
+  filter(access == "Open Access") %>% 
+  group_by(access) %>% 
+  summarise(n = n_distinct(openaire_id)) %>%
+  .$n
+prop <- round(oa_pubs / length(unique(ugoe_pubs()$openaire_id)) * 100, 2)
+
+valueBox(prop, icon = "fa-lock-open")
+})
+```
+
+### FAIR Share (in percent)
+
+```{r}
+renderValueBox({
+  fair_pubs <- ugoe_pubs() %>% 
+  unnest(pid) %>% 
+    filter(!pid == "") %>% 
+    distinct(openaire_id) %>% 
+    nrow()
+prop <- round(fair_pubs / length(unique(ugoe_pubs()$openaire_id)) * 100, 2)
+
+valueBox(prop, icon = "fa-link")
+})
+```
+
+Row {data-height=400}
+--------------------------------------------------------
+
+### Publication volume by year
+
+  
+```{r}
+renderPlotly({
+  ugoe_pubs() %>%
+  filter(!dateofacceptance == "") %>% 
+  mutate(year = lubridate::ymd(dateofacceptance)) %>%
+  mutate(year = lubridate::year(year)) %>% 
+  filter(year %in% 2015:2018) %>%
+  group_by(access, year) %>%
+  summarise(n = n_distinct(openaire_id)) %>%
+  ggplot(aes(factor(year), n, fill = access)) +
+  geom_bar(stat = "identity") +
+  xlab("Year") +
+  ylab("Grant funded publications") +
+  viridis::scale_fill_viridis("Access", discrete = TRUE, option = "D", end = 0.8) +
+  theme_minimal() -> p
+plotly::ggplotly(p)
+})
+
+```
+
+
+### Breakdown by funding scheme
+
+```{r}
+renderPlotly({
+  ugoe_pubs_df %>%
+  filter(!dateofacceptance == "") %>% 
+  mutate(fill_col = ifelse(funding_scheme %in% ugoe_pubs()$funding_scheme, "#56B4E9", "grey50")) %>%
+  group_by(funding_scheme, fill_col) %>% 
+  summarise(n_pubs = n_distinct(openaire_id)) %>% 
+  arrange(desc(n_pubs)) %>%
+    ggplot(aes(reorder(funding_scheme, n_pubs), n_pubs, fill = fill_col)) + 
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    xlab("Funding scheme") +
+    ylab("Publications") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ".", scientific = FALSE)) +
+    scale_fill_manual(values = c("#56B4E9", "grey50")) +
+    theme_minimal() -> p
+p <- ggplotly(p)
+layout(p, showlegend = FALSE)
+})
+```
+
+Row {data-height=700}
+--------------------------------------------------------
+
+### Open Access Share per Project
+
+```{r}
+
+ugoe_pubs_df %>%
+  filter(access == "Open Access") %>% 
+  group_by(openaire_project_id) %>%
+  summarise(oa_n = n_distinct(openaire_id)) -> oa_pub
+
+ugoe_pubs_df %>%
+  group_by(openaire_project_id) %>%
+  summarise(n = n_distinct(openaire_id)) %>%
+  inner_join(oa_pub) %>%
+  mutate(prop = oa_n / n) -> pubs_oa
+
+renderPlotly({
+ p <-  pubs_oa %>%
+    filter(openaire_project_id %in% ugoe_pubs()$openaire_project_id) %>%
+    ggplot(aes(reorder(openaire_project_id, prop), prop, fill = prop)) +
+    geom_bar(stat = "identity") +
+   theme_minimal() +
+   coord_flip() +
+   xlab("Project IDs") +
+   ylab("Open Access Share") +
+   scale_y_continuous(labels=percent) +
+   scale_fill_viridis_c(option = "C", end = 0, begin = 1)
+ p <- ggplotly(p)
+layout(p, showlegend = FALSE)
 })
 ```
