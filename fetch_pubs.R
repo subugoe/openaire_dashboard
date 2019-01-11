@@ -2,7 +2,7 @@
 # 1. get ugoe org data
 library(tidyverse)
 library(ropenaire)
-h2020_org <- readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
+h2020_org <- readr::read_delim("data/cordis-h2020organizations.csv", delim = ";",
                                locale = locale(decimal_mark = ",")) %>%
   mutate_if(is.integer, as.character) %>%
   filter(id == "999845640")

@@ -17,7 +17,7 @@ library(DT)
 library(jsonlite)
 # data
 # 1. get ugoe org data
-h2020_org <- readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
+h2020_org <- readr::read_delim("data/cordis-h2020organizations.csv", delim = ";",
                                locale = locale(decimal_mark = ",")) %>%
   mutate_if(is.integer, as.character) %>%
   filter(id == "999845640")
@@ -164,7 +164,7 @@ Collaboration
 
 ```{r}
 # extract countries and collaborators
-h2020_orgs <- reactive({readr::read_delim("data/cordis-h2020organisations.csv", delim = ";",
+h2020_orgs <- reactive({readr::read_delim("data/cordis-h2020organizations.csv", delim = ";",
                                locale = locale(decimal_mark = ",")) %>%
   mutate_if(is.integer, as.character) %>%
   filter(projectID %in% ugoe()$id)
