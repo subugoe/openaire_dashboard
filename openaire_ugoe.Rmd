@@ -354,7 +354,7 @@ ugoe_pubs_df %>%
   summarise(oa_n = n_distinct(openaire_id)) -> oa_pub
 
 ugoe_pubs_df %>%
-  group_by(openaire_project_id) %>%
+  group_by(openaire_project_id, acronym) %>%
   summarise(n = n_distinct(openaire_id)) %>%
   inner_join(oa_pub) %>%
   mutate(prop = oa_n / n) -> pubs_oa
@@ -362,7 +362,7 @@ ugoe_pubs_df %>%
 renderPlotly({
  p <-  pubs_oa %>%
     filter(openaire_project_id %in% ugoe_pubs()$openaire_project_id) %>%
-    ggplot(aes(reorder(openaire_project_id, prop), prop, fill = prop)) +
+    ggplot(aes(reorder(acronym, prop), prop, fill = prop)) +
     geom_bar(stat = "identity") +
    theme_minimal() +
    coord_flip() +
