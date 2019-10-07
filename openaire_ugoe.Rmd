@@ -88,7 +88,7 @@ valueBox(n_contracts, caption = "Signed H2020 contracts", icon = "fa-check")
 
 ```{r}
 renderValueBox({
-valueBox(nrow(filter(ugoe(), endOfParticipation == "false")), icon = "fa-check")
+valueBox(nrow(filter(ugoe(), endOfParticipation == FALSE)), icon = "fa-check")
 })
 ```
 
